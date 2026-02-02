@@ -12,25 +12,40 @@ declare global {
 type Props = {
   videoId: string;
   onPaused: (timestamp: number) => void;
+  onPauseEvent: () => void;
   onPlaying: () => void;
   onEnded: () => void;
   seekTo: number | null;
   onSeekHandled: () => void;
 };
 
-export default function VideoPlayer({ videoId, onPaused, onPlaying, onEnded, seekTo, onSeekHandled }: Props) {
+export default function VideoPlayer({
+  videoId,
+  onPaused,
+  onPauseEvent,
+  onPlaying,
+  onEnded,
+  seekTo,
+  onSeekHandled
+}: Props) {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
   const onPausedRef = useRef(onPaused);
+  const onPauseEventRef = useRef(onPauseEvent);
   const onPlayingRef = useRef(onPlaying);
   const onEndedRef = useRef(onEnded);
   const pollRef = useRef<number | null>(null);
   const lastReportedRef = useRef<number | null>(null);
+  const lastStateRef = useRef<number | null>(null);
 
   useEffect(() => {
     onPausedRef.current = onPaused;
   }, [onPaused]);
+
+  useEffect(() => {
+    onPauseEventRef.current = onPauseEvent;
+  }, [onPauseEvent]);
 
   useEffect(() => {
     onPlayingRef.current = onPlaying;
@@ -54,6 +69,9 @@ export default function VideoPlayer({ videoId, onPaused, onPlaying, onEnded, see
           onStateChange: (event: any) => {
             if (event.data === window.YT.PlayerState.PAUSED) {
               const time = playerRef.current?.getCurrentTime?.() ?? 0;
+              if (lastStateRef.current !== window.YT.PlayerState.PAUSED) {
+                onPauseEventRef.current();
+              }
               onPausedRef.current(time);
               lastReportedRef.current = Math.floor(time);
               if (pollRef.current === null) {
@@ -68,7 +86,9 @@ export default function VideoPlayer({ videoId, onPaused, onPlaying, onEnded, see
               }
             }
             if (event.data === window.YT.PlayerState.PLAYING) {
-              onPlayingRef.current();
+              if (lastStateRef.current !== window.YT.PlayerState.PLAYING) {
+                onPlayingRef.current();
+              }
               if (pollRef.current !== null) {
                 window.clearInterval(pollRef.current);
                 pollRef.current = null;
@@ -76,7 +96,9 @@ export default function VideoPlayer({ videoId, onPaused, onPlaying, onEnded, see
               lastReportedRef.current = null;
             }
             if (event.data === window.YT.PlayerState.ENDED) {
-              onEndedRef.current();
+              if (lastStateRef.current !== window.YT.PlayerState.ENDED) {
+                onEndedRef.current();
+              }
             }
             if (event.data === window.YT.PlayerState.BUFFERING) {
               if (pollRef.current !== null) {
@@ -85,6 +107,7 @@ export default function VideoPlayer({ videoId, onPaused, onPlaying, onEnded, see
               }
               lastReportedRef.current = null;
             }
+            lastStateRef.current = event.data;
           }
         }
       });

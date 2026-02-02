@@ -60,7 +60,8 @@ def add_note():
             existing["createdAt"] = entry["createdAt"]
             replaced = True
             break
-        if not overall and float(existing.get("timestamp", -1)) == float(entry["timestamp"]):
+        existing_ts = existing.get("timestamp")
+        if not overall and existing_ts is not None and float(existing_ts) == float(entry["timestamp"]):
             existing["transcript"] = entry["transcript"]
             existing["createdAt"] = entry["createdAt"]
             replaced = True
@@ -126,7 +127,10 @@ def delete_note():
     if overall:
         notes[video_id] = [e for e in entries if not e.get("overall")]
     else:
-        notes[video_id] = [e for e in entries if float(e.get("timestamp", -1)) != float(timestamp)]
+        notes[video_id] = [
+            e for e in entries
+            if e.get("timestamp") is None or float(e.get("timestamp")) != float(timestamp)
+        ]
 
     if len(notes[video_id]) == original_len:
         return jsonify({"error": "note not found"}), 404

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
 
@@ -10,9 +10,21 @@ type Props = {
   initialTranscript: string;
   mode: "timestamp" | "overall";
   onSaved: () => void;
+  startSignal?: number;
+  stopSignal?: number;
+  autoStop?: boolean;
 };
 
-export default function Recorder({ videoId, timestamp, initialTranscript, mode, onSaved }: Props) {
+export default function Recorder({
+  videoId,
+  timestamp,
+  initialTranscript,
+  mode,
+  onSaved,
+  startSignal,
+  stopSignal,
+  autoStop = true
+}: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
@@ -20,11 +32,14 @@ export default function Recorder({ videoId, timestamp, initialTranscript, mode, 
   const chunksRef = useRef<Blob[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const startingRef = useRef(false);
+  const lastAutoStartRef = useRef<number | null>(null);
 
   const canRecord = useMemo(() => typeof window !== "undefined" && !!navigator.mediaDevices, []);
 
   useEffect(() => {
     if (mode === "timestamp" && timestamp === null) return;
+    if (isRecording) return;
     setStatus("Ready to record");
     setTranscript(initialTranscript || "");
     setAudioUrl(null);
@@ -38,11 +53,14 @@ export default function Recorder({ videoId, timestamp, initialTranscript, mode, 
     chunksRef.current = [];
   };
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     if (!canRecord) {
       setStatus("Recording not supported in this browser");
       return;
     }
+    if (startingRef.current || isRecording) return;
+    if (mode === "timestamp" && timestamp === null) return;
+    startingRef.current = true;
     setStatus("Recording...");
     setTranscript("");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -82,13 +100,31 @@ export default function Recorder({ videoId, timestamp, initialTranscript, mode, 
 
     recorder.start();
     setIsRecording(true);
-  };
+    startingRef.current = false;
+    if (startSignal !== undefined) {
+      lastAutoStartRef.current = Date.now();
+    }
+  }, [canRecord, isRecording, mode, timestamp]);
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     recorderRef.current?.stop();
     recognitionRef.current?.stop();
     setIsRecording(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (startSignal === undefined) return;
+    if (mode === "timestamp" && timestamp === null) return;
+    if (!isRecording) startRecording();
+  }, [startSignal, mode, timestamp, isRecording, startRecording]);
+
+  useEffect(() => {
+    if (stopSignal === undefined) return;
+    if (!autoStop) return;
+    const lastStart = lastAutoStartRef.current;
+    if (lastStart && Date.now() - lastStart < 500) return;
+    if (isRecording) stopRecording();
+  }, [stopSignal, autoStop, isRecording, stopRecording]);
 
   const saveTranscript = async () => {
     if (!transcript.trim()) {

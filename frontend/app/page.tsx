@@ -23,6 +23,11 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [seekTo, setSeekTo] = useState<number | null>(null);
   const [overallActive, setOverallActive] = useState(false);
+  const [handsfreeSetting, setHandsfreeSetting] = useState(true);
+  const [handsfreeActive, setHandsfreeActive] = useState(true);
+  const [startToken, setStartToken] = useState(0);
+  const [stopToken, setStopToken] = useState(0);
+  const [overallStartToken, setOverallStartToken] = useState(0);
 
   useEffect(() => {
     if (!videoId) return;
@@ -41,6 +46,8 @@ export default function HomePage() {
     setError(null);
     setPausedAt(null);
     setNotes([]);
+    setOverallActive(false);
+    setHandsfreeActive(handsfreeSetting);
     if (id === videoId) {
       refreshNotes();
     } else {
@@ -89,6 +96,17 @@ export default function HomePage() {
             Load Video
           </button>
         </div>
+        <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+          <input
+            id="handsfree"
+            type="checkbox"
+            checked={handsfreeSetting}
+            onChange={(event) => setHandsfreeSetting(event.target.checked)}
+          />
+          <label htmlFor="handsfree">
+            Handsfree mode (auto-record on pause, applies on load)
+          </label>
+        </div>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </section>
 
@@ -98,13 +116,18 @@ export default function HomePage() {
             <VideoPlayer
               videoId={videoId}
               onPaused={(time) => setPausedAt(Math.floor(time))}
+              onPauseEvent={() => {
+                if (handsfreeActive) setStartToken((v) => v + 1);
+              }}
               onPlaying={() => {
                 setPausedAt(null);
                 setOverallActive(false);
+                if (handsfreeActive) setStopToken((v) => v + 1);
               }}
               onEnded={() => {
                 setPausedAt(null);
                 setOverallActive(true);
+                if (handsfreeActive) setOverallStartToken((v) => v + 1);
               }}
               seekTo={seekTo}
               onSeekHandled={() => setSeekTo(null)}
@@ -119,17 +142,23 @@ export default function HomePage() {
               initialTranscript={
                 pausedAt === null
                   ? ""
-                  : notes.find((note) => Math.floor(note.timestamp) === pausedAt)?.transcript || ""
+                  : notes.find(
+                      (note) => note.timestamp !== null && Math.floor(note.timestamp) === pausedAt
+                    )?.transcript || ""
               }
               onSaved={refreshNotes}
+              startSignal={handsfreeActive ? startToken : undefined}
+              stopSignal={handsfreeActive ? stopToken : undefined}
             />
-            {overallActive ? (
+            {overallActive && pausedAt === null ? (
               <Recorder
                 videoId={videoId}
                 timestamp={null}
                 mode="overall"
                 initialTranscript={notes.find((note) => note.overall)?.transcript || ""}
                 onSaved={refreshNotes}
+                startSignal={handsfreeActive ? overallStartToken : undefined}
+                autoStop={false}
               />
             ) : null}
           </div>
