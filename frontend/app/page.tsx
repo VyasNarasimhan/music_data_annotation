@@ -9,9 +9,10 @@ import { extractVideoId, formatTimestamp } from "../lib/youtube";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
 
 type Note = {
-  timestamp: number;
+  timestamp: number | null;
   transcript: string;
   createdAt: string;
+  overall?: boolean;
 };
 
 export default function HomePage() {
@@ -21,6 +22,7 @@ export default function HomePage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [seekTo, setSeekTo] = useState<number | null>(null);
+  const [overallActive, setOverallActive] = useState(false);
 
   useEffect(() => {
     if (!videoId) return;
@@ -39,7 +41,11 @@ export default function HomePage() {
     setError(null);
     setPausedAt(null);
     setNotes([]);
-    setVideoId(id);
+    if (id === videoId) {
+      refreshNotes();
+    } else {
+      setVideoId(id);
+    }
   };
 
   const refreshNotes = async () => {
@@ -75,6 +81,9 @@ export default function HomePage() {
             placeholder="https://www.youtube.com/watch?v=..."
             value={videoInput}
             onChange={(event) => setVideoInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") loadVideo();
+            }}
           />
           <button className="rounded-md bg-ink px-4 py-2 text-sm text-white" onClick={loadVideo}>
             Load Video
@@ -89,7 +98,14 @@ export default function HomePage() {
             <VideoPlayer
               videoId={videoId}
               onPaused={(time) => setPausedAt(Math.floor(time))}
-              onPlaying={() => setPausedAt(null)}
+              onPlaying={() => {
+                setPausedAt(null);
+                setOverallActive(false);
+              }}
+              onEnded={() => {
+                setPausedAt(null);
+                setOverallActive(true);
+              }}
               seekTo={seekTo}
               onSeekHandled={() => setSeekTo(null)}
             />
@@ -99,6 +115,7 @@ export default function HomePage() {
             <Recorder
               videoId={videoId}
               timestamp={pausedAt}
+              mode="timestamp"
               initialTranscript={
                 pausedAt === null
                   ? ""
@@ -106,6 +123,15 @@ export default function HomePage() {
               }
               onSaved={refreshNotes}
             />
+            {overallActive ? (
+              <Recorder
+                videoId={videoId}
+                timestamp={null}
+                mode="overall"
+                initialTranscript={notes.find((note) => note.overall)?.transcript || ""}
+                onSaved={refreshNotes}
+              />
+            ) : null}
           </div>
           <aside className="space-y-3">
             <h2 className="text-lg font-semibold text-ink">Saved Notes</h2>

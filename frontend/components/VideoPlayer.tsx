@@ -13,16 +13,18 @@ type Props = {
   videoId: string;
   onPaused: (timestamp: number) => void;
   onPlaying: () => void;
+  onEnded: () => void;
   seekTo: number | null;
   onSeekHandled: () => void;
 };
 
-export default function VideoPlayer({ videoId, onPaused, onPlaying, seekTo, onSeekHandled }: Props) {
+export default function VideoPlayer({ videoId, onPaused, onPlaying, onEnded, seekTo, onSeekHandled }: Props) {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
   const onPausedRef = useRef(onPaused);
   const onPlayingRef = useRef(onPlaying);
+  const onEndedRef = useRef(onEnded);
   const pollRef = useRef<number | null>(null);
   const lastReportedRef = useRef<number | null>(null);
 
@@ -33,6 +35,10 @@ export default function VideoPlayer({ videoId, onPaused, onPlaying, seekTo, onSe
   useEffect(() => {
     onPlayingRef.current = onPlaying;
   }, [onPlaying]);
+
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
 
   useEffect(() => {
     let isMounted = true;
@@ -68,6 +74,9 @@ export default function VideoPlayer({ videoId, onPaused, onPlaying, seekTo, onSe
                 pollRef.current = null;
               }
               lastReportedRef.current = null;
+            }
+            if (event.data === window.YT.PlayerState.ENDED) {
+              onEndedRef.current();
             }
             if (event.data === window.YT.PlayerState.BUFFERING) {
               if (pollRef.current !== null) {

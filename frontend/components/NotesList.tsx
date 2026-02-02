@@ -1,9 +1,10 @@
 import { formatTimestamp } from "../lib/youtube";
 
 type Note = {
-  timestamp: number;
+  timestamp: number | null;
   transcript: string;
   createdAt: string;
+  overall?: boolean;
 };
 
 type Props = {
@@ -21,9 +22,18 @@ export default function NotesList({ notes, onDelete, onJumpToTimestamp }: Props)
     );
   }
 
+  const overallNote = notes.find((note) => note.overall);
+  const timestampedNotes = notes.filter((note) => !note.overall);
+
   return (
     <div className="space-y-3">
-      {notes.map((note, index) => (
+      {overallNote ? (
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <div className="text-xs uppercase text-slate-500">Overall Feedback</div>
+          <p className="mt-2 text-sm text-slate-700">{overallNote.transcript}</p>
+        </div>
+      ) : null}
+      {timestampedNotes.map((note, index) => (
         <NoteRow
           key={`${note.timestamp}-${index}`}
           note={note}

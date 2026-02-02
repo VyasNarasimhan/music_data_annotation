@@ -37,28 +37,37 @@ def add_note():
     video_id = payload.get("videoId")
     timestamp = payload.get("timestamp")
     transcript = payload.get("transcript")
+    overall = bool(payload.get("overall"))
 
-    if not video_id or not isinstance(timestamp, (int, float)) or not transcript:
-        return jsonify({"error": "videoId, timestamp, transcript required"}), 400
+    if not video_id or not transcript:
+        return jsonify({"error": "videoId, transcript required"}), 400
+    if not overall and not isinstance(timestamp, (int, float)):
+        return jsonify({"error": "timestamp required for non-overall notes"}), 400
 
     notes = read_notes()
     entry = {
-        "timestamp": float(timestamp),
+        "timestamp": float(timestamp) if isinstance(timestamp, (int, float)) else None,
         "transcript": transcript,
+        "overall": overall,
         "createdAt": datetime.now(timezone.utc).isoformat()
     }
 
     notes.setdefault(video_id, [])
     replaced = False
     for existing in notes[video_id]:
-        if float(existing.get("timestamp", -1)) == float(entry["timestamp"]):
+        if overall and existing.get("overall"):
+            existing["transcript"] = entry["transcript"]
+            existing["createdAt"] = entry["createdAt"]
+            replaced = True
+            break
+        if not overall and float(existing.get("timestamp", -1)) == float(entry["timestamp"]):
             existing["transcript"] = entry["transcript"]
             existing["createdAt"] = entry["createdAt"]
             replaced = True
             break
     if not replaced:
         notes[video_id].append(entry)
-    notes[video_id].sort(key=lambda n: n["timestamp"])
+    notes[video_id].sort(key=lambda n: (n["timestamp"] is None, n["timestamp"] or 0))
 
     write_notes(notes)
     return jsonify({"ok": True, "entry": entry})
@@ -70,15 +79,23 @@ def update_note():
     video_id = payload.get("videoId")
     timestamp = payload.get("timestamp")
     new_transcript = payload.get("transcript")
+    overall = bool(payload.get("overall"))
 
-    if not video_id or not isinstance(timestamp, (int, float)) or not new_transcript:
-        return jsonify({"error": "videoId, timestamp, transcript required"}), 400
+    if not video_id or not new_transcript:
+        return jsonify({"error": "videoId, transcript required"}), 400
+    if not overall and not isinstance(timestamp, (int, float)):
+        return jsonify({"error": "timestamp required for non-overall notes"}), 400
 
     notes = read_notes()
     entries = notes.get(video_id, [])
     updated = False
     for entry in entries:
-        if float(entry.get("timestamp", -1)) == float(timestamp):
+        if overall and entry.get("overall"):
+            entry["transcript"] = new_transcript
+            entry["editedAt"] = datetime.now(timezone.utc).isoformat()
+            updated = True
+            break
+        if not overall and float(entry.get("timestamp", -1)) == float(timestamp):
             entry["transcript"] = new_transcript
             entry["editedAt"] = datetime.now(timezone.utc).isoformat()
             updated = True
@@ -96,14 +113,20 @@ def delete_note():
     payload = request.get_json(silent=True) or {}
     video_id = payload.get("videoId")
     timestamp = payload.get("timestamp")
+    overall = bool(payload.get("overall"))
 
-    if not video_id or not isinstance(timestamp, (int, float)):
-        return jsonify({"error": "videoId, timestamp required"}), 400
+    if not video_id:
+        return jsonify({"error": "videoId required"}), 400
+    if not overall and not isinstance(timestamp, (int, float)):
+        return jsonify({"error": "timestamp required for non-overall notes"}), 400
 
     notes = read_notes()
     entries = notes.get(video_id, [])
     original_len = len(entries)
-    notes[video_id] = [e for e in entries if float(e.get("timestamp", -1)) != float(timestamp)]
+    if overall:
+        notes[video_id] = [e for e in entries if not e.get("overall")]
+    else:
+        notes[video_id] = [e for e in entries if float(e.get("timestamp", -1)) != float(timestamp)]
 
     if len(notes[video_id]) == original_len:
         return jsonify({"error": "note not found"}), 404

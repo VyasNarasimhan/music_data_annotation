@@ -8,10 +8,11 @@ type Props = {
   videoId: string;
   timestamp: number | null;
   initialTranscript: string;
+  mode: "timestamp" | "overall";
   onSaved: () => void;
 };
 
-export default function Recorder({ videoId, timestamp, initialTranscript, onSaved }: Props) {
+export default function Recorder({ videoId, timestamp, initialTranscript, mode, onSaved }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
@@ -23,11 +24,11 @@ export default function Recorder({ videoId, timestamp, initialTranscript, onSave
   const canRecord = useMemo(() => typeof window !== "undefined" && !!navigator.mediaDevices, []);
 
   useEffect(() => {
-    if (timestamp === null) return;
+    if (mode === "timestamp" && timestamp === null) return;
     setStatus("Ready to record");
     setTranscript(initialTranscript || "");
     setAudioUrl(null);
-  }, [timestamp, initialTranscript]);
+  }, [timestamp, initialTranscript, mode]);
 
   const reset = () => {
     setIsRecording(false);
@@ -90,15 +91,24 @@ export default function Recorder({ videoId, timestamp, initialTranscript, onSave
   };
 
   const saveTranscript = async () => {
-    if (!transcript.trim() || timestamp === null) {
+    if (!transcript.trim()) {
       setStatus("Add a transcript before saving");
+      return;
+    }
+    if (mode === "timestamp" && timestamp === null) {
+      setStatus("Pause the video to capture a timestamp");
       return;
     }
     setStatus("Saving...");
     const res = await fetch(`${API_BASE}/api/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoId, timestamp, transcript: transcript.trim() })
+      body: JSON.stringify({
+        videoId,
+        timestamp,
+        transcript: transcript.trim(),
+        overall: mode === "overall"
+      })
     });
 
     if (!res.ok) {
@@ -110,7 +120,7 @@ export default function Recorder({ videoId, timestamp, initialTranscript, onSave
     onSaved();
   };
 
-  if (timestamp === null) {
+  if (mode === "timestamp" && timestamp === null) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
         Pause the video to record thoughts.
@@ -138,7 +148,9 @@ export default function Recorder({ videoId, timestamp, initialTranscript, onSave
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="rounded-lg border border-slate-200 p-3 text-sm">
-          <p className="mb-2 text-xs uppercase text-slate-500">Transcript</p>
+          <p className="mb-2 text-xs uppercase text-slate-500">
+            {mode === "overall" ? "Overall Transcript" : "Transcript"}
+          </p>
           <textarea
             className="h-28 w-full resize-none rounded-md border border-slate-200 p-2 text-sm"
             placeholder="Speech-to-text will appear here. You can edit it."
