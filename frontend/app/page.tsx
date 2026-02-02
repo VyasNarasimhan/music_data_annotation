@@ -149,6 +149,8 @@ export default function HomePage() {
               onSaved={refreshNotes}
               startSignal={handsfreeActive ? startToken : undefined}
               stopSignal={handsfreeActive ? stopToken : undefined}
+              autoSaveOnStop={handsfreeActive}
+              handsfree={handsfreeActive}
             />
             {overallActive && pausedAt === null ? (
               <Recorder
@@ -159,6 +161,7 @@ export default function HomePage() {
                 onSaved={refreshNotes}
                 startSignal={handsfreeActive ? overallStartToken : undefined}
                 autoStop={false}
+                handsfree={handsfreeActive}
               />
             ) : null}
           </div>

@@ -13,6 +13,8 @@ type Props = {
   startSignal?: number;
   stopSignal?: number;
   autoStop?: boolean;
+  autoSaveOnStop?: boolean;
+  handsfree?: boolean;
 };
 
 export default function Recorder({
@@ -23,33 +25,49 @@ export default function Recorder({
   onSaved,
   startSignal,
   stopSignal,
-  autoStop = true
+  autoStop = true,
+  autoSaveOnStop = false,
+  handsfree = false
 }: Props) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const chunksRef = useRef<Blob[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const startingRef = useRef(false);
   const lastAutoStartRef = useRef<number | null>(null);
+  const transcriptRef = useRef("");
+  const keyRef = useRef<string>("");
 
   const canRecord = useMemo(() => typeof window !== "undefined" && !!navigator.mediaDevices, []);
 
   useEffect(() => {
     if (mode === "timestamp" && timestamp === null) return;
     if (isRecording) return;
-    setStatus("Ready to record");
-    setTranscript(initialTranscript || "");
-    setAudioUrl(null);
+    const key = `${mode}:${mode === "overall" ? "overall" : String(timestamp)}`;
+    if (keyRef.current !== key) {
+      keyRef.current = key;
+      setStatus("Ready to record");
+      setTranscript(initialTranscript || "");
+      setAudioUrl(null);
+      setSaved(false);
+    }
   }, [timestamp, initialTranscript, mode]);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
 
   const reset = () => {
     setIsRecording(false);
     setAudioUrl(null);
     setTranscript("");
     setStatus("Ready to record");
+    setSaved(false);
     chunksRef.current = [];
   };
 
@@ -64,6 +82,7 @@ export default function Recorder({
     setStatus("Recording...");
     setTranscript("");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    streamRef.current = stream;
     const recorder = new MediaRecorder(stream);
     recorderRef.current = recorder;
     chunksRef.current = [];
@@ -72,10 +91,14 @@ export default function Recorder({
       if (event.data.size > 0) chunksRef.current.push(event.data);
     };
     recorder.onstop = () => {
-      stream.getTracks().forEach((track) => track.stop());
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
       setAudioUrl(URL.createObjectURL(blob));
       setStatus("Recording stopped");
+      if (autoSaveOnStop && transcriptRef.current.trim()) {
+        saveTranscript(transcriptRef.current.trim());
+      }
     };
 
     const RecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -104,11 +127,15 @@ export default function Recorder({
     if (startSignal !== undefined) {
       lastAutoStartRef.current = Date.now();
     }
-  }, [canRecord, isRecording, mode, timestamp]);
+  }, [canRecord, isRecording, mode, timestamp, autoSaveOnStop, videoId]);
 
   const stopRecording = useCallback(() => {
     recorderRef.current?.stop();
     recognitionRef.current?.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+    recognitionRef.current = null;
     setIsRecording(false);
   }, []);
 
@@ -126,8 +153,11 @@ export default function Recorder({
     if (isRecording) stopRecording();
   }, [stopSignal, autoStop, isRecording, stopRecording]);
 
-  const saveTranscript = async () => {
-    if (!transcript.trim()) {
+  const saveTranscript = async (overrideTranscript?: string) => {
+    const baseTranscript =
+      typeof overrideTranscript === "string" ? overrideTranscript : transcript;
+    const payloadTranscript = baseTranscript.trim();
+    if (!payloadTranscript) {
       setStatus("Add a transcript before saving");
       return;
     }
@@ -142,7 +172,7 @@ export default function Recorder({
       body: JSON.stringify({
         videoId,
         timestamp,
-        transcript: transcript.trim(),
+        transcript: payloadTranscript,
         overall: mode === "overall"
       })
     });
@@ -153,7 +183,19 @@ export default function Recorder({
     }
 
     setStatus("Saved");
+    setSaved(true);
     onSaved();
+  };
+
+  const handleSaveClick = () => {
+    if (isRecording) {
+      stopRecording();
+      window.setTimeout(() => {
+        void saveTranscript();
+      }, 150);
+    } else {
+      void saveTranscript();
+    }
   };
 
   if (mode === "timestamp" && timestamp === null) {
@@ -164,21 +206,43 @@ export default function Recorder({
     );
   }
 
+  if (saved) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+        Saved successfully.
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          className="rounded-md bg-accent px-3 py-2 text-sm text-white"
-          onClick={isRecording ? stopRecording : startRecording}
-        >
-          {isRecording ? "Stop" : "Record"}
-        </button>
-        <button className="rounded-md bg-slate-100 px-3 py-2 text-sm" onClick={reset}>
-          Redo
-        </button>
-        <button className="rounded-md bg-ink px-3 py-2 text-sm text-white" onClick={saveTranscript}>
-          Save Transcript
-        </button>
+        {handsfree ? (
+          <button
+            className="rounded-md bg-ink px-3 py-2 text-sm text-white"
+            onClick={handleSaveClick}
+          >
+            Save Transcript
+          </button>
+        ) : (
+          <>
+            <button
+              className="rounded-md bg-accent px-3 py-2 text-sm text-white"
+              onClick={isRecording ? stopRecording : startRecording}
+            >
+              {isRecording ? "Stop" : "Record"}
+            </button>
+            <button className="rounded-md bg-slate-100 px-3 py-2 text-sm" onClick={reset}>
+              Redo
+            </button>
+            <button
+              className="rounded-md bg-ink px-3 py-2 text-sm text-white"
+              onClick={handleSaveClick}
+            >
+              Save Transcript
+            </button>
+          </>
+        )}
         {status && <span className="text-xs text-slate-500">{status}</span>}
       </div>
 
